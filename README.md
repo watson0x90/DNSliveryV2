@@ -1,7 +1,11 @@
 ![python-3.7](https://img.shields.io/badge/python-3.7-blue.svg)
 [![Known Vulnerabilities](https://snyk.io/test/github/no0be/DNSlivery/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/no0be/DNSlivery?targetFile=requirements.txt)
 
-# DNSlivery
+# DNSliveryV2
+## Note
+I give all credit to the original author for their work. I will be adding documentation and additional features. Since I saw old PULL requests (3+ years), I decided to make my own fork. 
+
+## Old Documentation 
 Easy files and payloads delivery over DNS.
 
 - [DNSlivery](#dnslivery)
