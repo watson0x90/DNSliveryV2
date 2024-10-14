@@ -1,4 +1,4 @@
-![python-3.7](https://img.shields.io/badge/python-3.7-blue.svg)
+![python-3.12](https://img.shields.io/badge/python-3.12-blue.svg)
 [![Known Vulnerabilities](https://snyk.io/test/github/no0be/DNSlivery/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/no0be/DNSlivery?targetFile=requirements.txt)
 
 # DNSliveryV2
