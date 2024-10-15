@@ -66,6 +66,11 @@ sudo python dnslivery.py eth0 example.com ns.example.com -p /path/to/files -t po
 
 - I have encountered several issues when working with the dig command. To pull the payload, I needed to specify the nameserver (`@ns.example.com`) in the dig command. I am narrowing down the best solution I can think of and will. 
 
+## Future enhancements
+- Additional record type support for DNS
+- Python payload support. This will allow for a lot of fun encryption options
+- Either an interactive terminal to dynamically load payloads or a Vue.js interface where things can be handled on the fly. If I go the vue.js route, I might re-write this in GOlang...
+
 ---
 ## Old Documentation 
 Easy files and payloads delivery over DNS.
