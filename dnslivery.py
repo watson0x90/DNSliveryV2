@@ -106,7 +106,6 @@ if __name__ == '__main__':
     parser.add_argument('nameserver', default=None, help='FQDN name of the server running DNSlivery')
     parser.add_argument('-p', '--path', default='.', help='path of directory to serve over DNS (default: pwd)')
     parser.add_argument('-s', '--size', default='255', help='size in bytes of base64 chunks (default: 255)')
-    parser.add_argument('-t')
     parser.add_argument('-v', '--verbose', action='store_true', help='increase verbosity')
     args = parser.parse_args()
 
