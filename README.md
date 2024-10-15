@@ -1,10 +1,72 @@
 ![python-3.12](https://img.shields.io/badge/python-3.12-blue.svg)
-[![Known Vulnerabilities](https://snyk.io/test/github/no0be/DNSlivery/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/no0be/DNSlivery?targetFile=requirements.txt)
 
 # DNSliveryV2
-## Note
-I give all credit to the original author for their work. I will be adding documentation and additional features. Since I saw old PULL requests (3+ years), I decided to make my own fork. 
+DNSlivery allows easy file and payload delivery over DNS via TXT records.
 
+## Note
+I give all credit to the original author for their work. I will be adding documentation and additional features. Since I saw old PULL requests (3+ years), I made my own fork. 
+
+## Features
+
+- Deliver files over DNS using TXT records.
+- Supports both PowerShell and Bash targets.
+- Generates stagers for different delivery methods (print, exec, save).
+
+## Requirements
+
+- Python 3.x
+- Scapy library
+
+## Installation
+
+1. Clone the repository:
+    ```sh
+    git clone https://github.com/your-repo/dnslivery.git
+    cd dnslivery
+    ```
+
+2. Create a virtual environment and activate it:
+    ```sh
+    python -m venv venv
+    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    ```
+
+3. Install the required dependencies:
+    ```sh
+    pip install -r requirements.txt
+    ```
+
+## Usage
+
+### Command Line Arguments
+
+- `interface`: Network interface to listen to DNS traffic.
+- `domain`: FQDN name of the DNS zone.
+- `nameserver`: FQDN name of the server running DNSlivery.
+- `-p`, `--path`: Path of the directory to serve over DNS (default: current directory).
+- `-s`, `--size`: Size in bytes of base64 chunks (default: 255).
+- `-v`, `--verbose`: Increase verbosity.
+- `-t`, `--target`: Target language for stagers (default: PowerShell, options: `powershell`, `bash`).
+
+### Example
+
+To run DNSlivery, use the following command:
+
+**bash**
+```sh
+sudo python dnslivery.py eth0 example.com ns.example.com -p /path/to/files -t bash
+```
+
+**powershell**
+```sh
+sudo python dnslivery.py eth0 example.com ns.example.com -p /path/to/files -t powershell
+```
+
+## Known issues
+
+- I have encountered several issues when working with the dig command. To pull the payload, I needed to specify the nameserver (`@ns.example.com`) in the dig command. I am narrowing down the best solution I can think of and will. 
+
+---
 ## Old Documentation 
 Easy files and payloads delivery over DNS.
 
